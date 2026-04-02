@@ -132,6 +132,38 @@
 
     .pin-icon { filter: drop-shadow(0 1px 3px rgba(0,0,0,0.35)); }
 
+    .cluster-info-tip {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      border: 1px solid var(--muted-foreground);
+      color: var(--muted-foreground);
+      font-size: 10px; font-weight: 700;
+      cursor: default;
+      flex-shrink: 0;
+    }
+    .cluster-info-tip:hover .cluster-info-tooltip { display: block; }
+    .cluster-info-tooltip {
+      display: none;
+      position: absolute;
+      left: 22px; top: 50%;
+      transform: translateY(-50%);
+      background: var(--card);
+      color: var(--card-foreground);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      padding: 10px 12px;
+      font-size: 12px; font-weight: 400;
+      white-space: nowrap;
+      z-index: 2000;
+      pointer-events: none;
+      line-height: 1.6;
+    }
+
     .fuel-btn {
       padding: 4px 12px;
       border: 1px solid var(--border);
@@ -259,6 +291,23 @@
           <select id="region-select">
             <option value="">Toutes les régions</option>
           </select>
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px;">
+            <div class="fuel-btns" id="cluster-btns" style="margin-bottom:0;">
+              <button class="fuel-btn cluster-btn" data-mode="min">Min</button>
+              <button class="fuel-btn cluster-btn active" data-mode="avg">Moy</button>
+              <button class="fuel-btn cluster-btn" data-mode="max">Max</button>
+            </div>
+            <div class="cluster-info-tip">
+              ?
+              <div class="cluster-info-tooltip">
+                Prix affiché sur chaque groupe de stations :<br><br>
+                <strong>Min</strong> — prix le plus bas du groupe<br>
+                <strong>Moy</strong> — prix moyen du groupe<br>
+                <strong>Max</strong> — prix le plus élevé du groupe<br><br>
+                La couleur reflète également la valeur affichée.
+              </div>
+            </div>
+          </div>
           <label for="price-slider">Prix max: <span id="slider-label">-</span></label>
           <input type="range" id="price-slider" min="0" max="300" step="0.5" value="300">
           <div id="slider-value">
@@ -397,6 +446,7 @@
 
     let currentFuel   = 'regular';
     let currentRegion = '';
+    let clusterMode   = 'avg'; // 'min' | 'avg' | 'max'
     let allStations = [];
     let allMarkers  = [];
     let visibleSet  = new Set();
@@ -414,9 +464,12 @@
         const count = cluster.getChildCount();
         let fill, label;
         if (prices.length > 0) {
-          const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
-          fill  = priceColor(avg, minPrice, maxPrice);
-          label = avg.toFixed(1);
+          let displayPrice;
+          if (clusterMode === 'min')      displayPrice = Math.min(...prices);
+          else if (clusterMode === 'max') displayPrice = Math.max(...prices);
+          else                            displayPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
+          fill  = priceColor(displayPrice, minPrice, maxPrice);
+          label = displayPrice.toFixed(1);
         } else {
           fill  = '#9ca3af';
           label = count;
@@ -483,11 +536,20 @@
         setTimeout(() => { loading.style.display = 'none'; }, 4000);
       });
 
-    document.querySelectorAll('.fuel-btn').forEach(btn => {
+    document.querySelectorAll('.cluster-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.dataset.mode === clusterMode) return;
+        clusterMode = btn.dataset.mode;
+        document.querySelectorAll('.cluster-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === clusterMode));
+        if (allStations.length) clusterGroup.refreshClusters();
+      });
+    });
+
+    document.querySelectorAll('.fuel-btn[data-fuel]').forEach(btn => {
       btn.addEventListener('click', () => {
         if (btn.dataset.fuel === currentFuel) return;
         currentFuel = btn.dataset.fuel;
-        document.querySelectorAll('.fuel-btn').forEach(b => b.classList.toggle('active', b.dataset.fuel === currentFuel));
+        document.querySelectorAll('.fuel-btn[data-fuel]').forEach(b => b.classList.toggle('active', b.dataset.fuel === currentFuel));
         if (allStations.length) rebuildMarkers();
       });
     });
@@ -538,8 +600,11 @@
       clusterGroup.clearLayers();
       visibleSet.clear();
 
-      // Recompute min/max for the active fuel
-      const prices = allStations.map(s => s[currentFuel]).filter(p => p > 0);
+      // Recompute min/max for the active fuel, scoped to the selected region
+      const scopedStations = currentRegion
+        ? allStations.filter(s => s.region === currentRegion)
+        : allStations;
+      const prices = scopedStations.map(s => s[currentFuel]).filter(p => p > 0);
       minPrice = prices.length ? Math.min(...prices) : 0;
       maxPrice = prices.length ? Math.max(...prices) : 300;
 
