@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compress/gzip"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -9,23 +10,35 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path"
-	"regexp"
-	"strconv"
 	"strings"
+	"sync"
 	"time"
-
-	"github.com/xuri/excelize/v2"
 )
 
 //go:embed static/*
 var staticFiles embed.FS
 
 const (
-	dataURL     = "https://regieessencequebec.ca/data/stations-20260402132004.xlsx"
+	geojsonURL  = "https://regieessencequebec.ca/stations.geojson.gz"
 	defaultPort = "8080"
+	cacheTTL    = 5 * time.Minute
 )
 
+// GeoJSON structures matching the upstream format.
+type GeoJSONResponse struct {
+	Type     string          `json:"type"`
+	Metadata *GeoJSONMeta    `json:"metadata,omitempty"`
+	Features json.RawMessage `json:"features"`
+}
+
+type GeoJSONMeta struct {
+	GeneratedAt    string `json:"generated_at"`
+	ExcelURL       string `json:"excel_url"`
+	TotalStations  int    `json:"total_stations"`
+	ExcelSizeBytes int    `json:"excel_size_bytes"`
+}
+
+// Station is our simplified JSON shape for the frontend.
 type Station struct {
 	Name       string  `json:"name"`
 	Brand      string  `json:"brand"`
@@ -43,6 +56,13 @@ type StationsResponse struct {
 	LastUpdated string    `json:"lastUpdated"`
 	Stations    []Station `json:"stations"`
 }
+
+// In-memory cache
+var (
+	cacheMu       sync.RWMutex
+	cachedResp    *StationsResponse
+	cacheExpiry   time.Time
+)
 
 func main() {
 	port := os.Getenv("PORT")
@@ -63,25 +83,50 @@ func main() {
 }
 
 func handleStations(w http.ResponseWriter, r *http.Request) {
-	stations, err := fetchAndParse()
+	resp, err := getStations()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("error: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	resp := StationsResponse{
-		LastUpdated: parseTimestampFromURL(dataURL),
-		Stations:    stations,
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Cache-Control", "public, max-age=300")
 	json.NewEncoder(w).Encode(resp)
 }
 
-func fetchAndParse() ([]Station, error) {
-	log.Println("Fetching Excel data...")
-	resp, err := http.Get(dataURL)
+func getStations() (*StationsResponse, error) {
+	cacheMu.RLock()
+	if cachedResp != nil && time.Now().Before(cacheExpiry) {
+		defer cacheMu.RUnlock()
+		return cachedResp, nil
+	}
+	cacheMu.RUnlock()
+
+	resp, err := fetchAndParse()
+	if err != nil {
+		return nil, err
+	}
+
+	cacheMu.Lock()
+	cachedResp = resp
+	cacheExpiry = time.Now().Add(cacheTTL)
+	cacheMu.Unlock()
+
+	return resp, nil
+}
+
+func fetchAndParse() (*StationsResponse, error) {
+	log.Println("Fetching GeoJSON data from upstream...")
+
+	req, err := http.NewRequest("GET", geojsonURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+	req.Header.Set("Accept-Encoding", "gzip")
+	req.Header.Set("User-Agent", "essence-quebec-map/1.0")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetching data: %w", err)
 	}
@@ -91,81 +136,99 @@ func fetchAndParse() ([]Station, error) {
 		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
 	}
 
-	tmp, err := os.CreateTemp("", "stations-*.xlsx")
-	if err != nil {
-		return nil, fmt.Errorf("creating temp file: %w", err)
-	}
-	defer os.Remove(tmp.Name())
-
-	if _, err := io.Copy(tmp, resp.Body); err != nil {
-		tmp.Close()
-		return nil, fmt.Errorf("writing temp file: %w", err)
-	}
-	tmp.Close()
-
-	f, err := excelize.OpenFile(tmp.Name())
-	if err != nil {
-		return nil, fmt.Errorf("opening excel: %w", err)
-	}
-	defer f.Close()
-
-	sheets := f.GetSheetList()
-	if len(sheets) == 0 {
-		return nil, fmt.Errorf("no sheets found")
+	// Handle gzip if the response is compressed
+	var reader io.Reader = resp.Body
+	if resp.Header.Get("Content-Encoding") == "gzip" || strings.HasSuffix(geojsonURL, ".gz") {
+		gz, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("gzip reader: %w", err)
+		}
+		defer gz.Close()
+		reader = gz
 	}
 
-	rows, err := f.GetRows(sheets[0])
-	if err != nil {
-		return nil, fmt.Errorf("reading rows: %w", err)
+	var geojson GeoJSONResponse
+	if err := json.NewDecoder(reader).Decode(&geojson); err != nil {
+		return nil, fmt.Errorf("decoding geojson: %w", err)
 	}
 
-	if len(rows) < 2 {
-		return nil, fmt.Errorf("not enough rows")
+	// Parse features
+	var features []struct {
+		Geometry struct {
+			Coordinates [2]float64 `json:"coordinates"`
+		} `json:"geometry"`
+		Properties struct {
+			Name       string `json:"Name"`
+			Brand      string `json:"brand"`
+			Address    string `json:"Address"`
+			PostalCode string `json:"PostalCode"`
+			Region     string `json:"Region"`
+			Prices     []struct {
+				GasType     string  `json:"GasType"`
+				Price       *string `json:"Price"`
+				IsAvailable bool    `json:"IsAvailable"`
+			} `json:"Prices"`
+		} `json:"properties"`
+	}
+
+	if err := json.Unmarshal(geojson.Features, &features); err != nil {
+		return nil, fmt.Errorf("parsing features: %w", err)
 	}
 
 	var stations []Station
-	for _, row := range rows[1:] {
-		if len(row) < 8 {
-			continue
-		}
-
-		lat, err := strconv.ParseFloat(row[5], 64)
-		if err != nil {
-			continue
-		}
-		lng, err := strconv.ParseFloat(row[6], 64)
-		if err != nil {
-			continue
-		}
-
-		regular := parsePrice(row[7])
-		if regular <= 0 {
+	for _, f := range features {
+		lng := f.Geometry.Coordinates[0]
+		lat := f.Geometry.Coordinates[1]
+		if lat == 0 && lng == 0 {
 			continue
 		}
 
 		s := Station{
-			Name:       row[0],
-			Brand:      row[1],
-			Address:    row[2],
-			Region:     row[3],
-			PostalCode: row[4],
+			Name:       f.Properties.Name,
+			Brand:      f.Properties.Brand,
+			Address:    f.Properties.Address,
+			Region:     f.Properties.Region,
+			PostalCode: f.Properties.PostalCode,
 			Lat:        lat,
 			Lng:        lng,
-			Regular:    regular,
 		}
 
-		if len(row) > 8 {
-			s.Super = parsePrice(row[8])
+		for _, p := range f.Properties.Prices {
+			if p.Price == nil || !p.IsAvailable {
+				continue
+			}
+			price := parsePrice(*p.Price)
+			if price <= 0 {
+				continue
+			}
+			switch p.GasType {
+			case "Régulier":
+				s.Regular = price
+			case "Super":
+				s.Super = price
+			case "Diesel":
+				s.Diesel = price
+			}
 		}
-		if len(row) > 9 {
-			s.Diesel = parsePrice(row[9])
+
+		if s.Regular <= 0 {
+			continue
 		}
 
 		stations = append(stations, s)
 	}
 
-	log.Printf("Parsed %d stations", len(stations))
-	return stations, nil
+	lastUpdated := ""
+	if geojson.Metadata != nil && geojson.Metadata.GeneratedAt != "" {
+		lastUpdated = geojson.Metadata.GeneratedAt
+	}
+
+	log.Printf("Parsed %d stations (last updated: %s)", len(stations), lastUpdated)
+
+	return &StationsResponse{
+		LastUpdated: lastUpdated,
+		Stations:    stations,
+	}, nil
 }
 
 // parsePrice converts "190.9¢" to 190.9
@@ -176,33 +239,11 @@ func parsePrice(s string) float64 {
 	}
 	s = strings.TrimSuffix(s, "¢")
 	s = strings.TrimSuffix(s, "\u00a2") // cent sign
-	v, err := strconv.ParseFloat(s, 64)
+
+	var v float64
+	_, err := fmt.Sscanf(s, "%f", &v)
 	if err != nil {
 		return 0
 	}
 	return v
-}
-
-var tsRegex = regexp.MustCompile(`(\d{14})`)
-
-// parseTimestampFromURL extracts a YYYYMMDDHHmmSS timestamp from the URL
-// filename and returns it as a human-readable string.
-func parseTimestampFromURL(rawURL string) string {
-	base := path.Base(rawURL)
-	match := tsRegex.FindString(base)
-	if match == "" {
-		return ""
-	}
-
-	loc, err := time.LoadLocation("America/Montreal")
-	if err != nil {
-		loc = time.UTC
-	}
-
-	t, err := time.ParseInLocation("20060102150405", match, loc)
-	if err != nil {
-		return ""
-	}
-
-	return t.Format(time.RFC3339)
 }
