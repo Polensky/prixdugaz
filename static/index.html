@@ -75,8 +75,8 @@
   <div id="map"></div>
 
   <div id="controls">
-    <button class="mode-btn active" data-mode="heatmap">Heatmap</button>
-    <button class="mode-btn" data-mode="stations">Stations</button>
+    <button class="mode-btn active" data-mode="stations">Stations</button>
+    <button class="mode-btn" data-mode="heatmap">Heatmap</button>
   </div>
 
   <div id="slider-panel">
@@ -111,7 +111,7 @@
     }).addTo(map);
 
     // State
-    let currentMode = 'heatmap';
+    let currentMode = 'stations';
     let allStations = [];
     let minPrice = 0;
     let maxPrice = 300;
@@ -178,8 +178,8 @@
         // Build all station markers
         buildStationMarkers(maxPrice);
 
-        // Start in heatmap mode
-        setMode('heatmap');
+        // Start in stations mode
+        setMode('stations');
 
         // Slider events
         slider.addEventListener('input', () => {
