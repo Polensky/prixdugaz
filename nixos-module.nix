@@ -14,6 +14,12 @@ in
       description = "Port the Essence web server listens on.";
     };
 
+    dataDir = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/essence";
+      description = "Directory where the SQLite database is stored.";
+    };
+
     openFirewall = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -36,7 +42,8 @@ in
       wants = [ "network-online.target" ];
 
       environment = {
-        PORT = toString cfg.port;
+        PORT       = toString cfg.port;
+        ESSENCE_DB = "${cfg.dataDir}/essence.db";
       };
 
       serviceConfig = {
@@ -45,6 +52,8 @@ in
         RestartSec = 5;
 
         DynamicUser = true;
+        StateDirectory = "essence";
+        StateDirectoryMode = "0750";
 
         # Hardening
         NoNewPrivileges = true;
