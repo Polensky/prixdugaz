@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Essence Québec - Carte des prix</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -61,15 +63,6 @@
     }
     .legend-labels { display: flex; justify-content: space-between; font-size: 11px; color: #666; }
     #stats { margin-top: 8px; font-size: 11px; color: #888; }
-
-    /* Gas pump markers */
-    .pump-icon {
-      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
-      transition: transform 0.1s;
-    }
-    .pump-icon:hover {
-      transform: scale(1.3);
-    }
   </style>
 </head>
 <body>
@@ -103,6 +96,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
   <script>
     const map = L.map('map').setView([46.8, -71.2], 7);
 
@@ -117,7 +111,13 @@
     let minPrice = 0;
     let maxPrice = 300;
     let heatLayer = null;
-    let stationMarkers = L.layerGroup();
+    let clusterGroup = L.markerClusterGroup({
+      maxClusterRadius: 50,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      zoomToBoundsOnClick: true,
+      disableClusteringAtZoom: 14,
+    });
 
     fetch('/api/stations')
       .then(r => r.json())
@@ -181,10 +181,6 @@
           const val = parseFloat(slider.value);
           document.getElementById('slider-label').textContent = val.toFixed(1) + '¢/L';
           buildStationMarkers(val);
-          if (currentMode === 'stations') {
-            map.removeLayer(stationMarkers);
-            map.addLayer(stationMarkers);
-          }
         });
       })
       .catch(err => {
@@ -204,36 +200,27 @@
       });
 
       if (mode === 'heatmap') {
-        map.removeLayer(stationMarkers);
+        map.removeLayer(clusterGroup);
         if (heatLayer) map.addLayer(heatLayer);
         document.getElementById('legend').style.display = 'block';
         document.getElementById('slider-panel').style.display = 'none';
       } else {
         if (heatLayer) map.removeLayer(heatLayer);
-        map.addLayer(stationMarkers);
+        map.addLayer(clusterGroup);
         document.getElementById('legend').style.display = 'none';
         document.getElementById('slider-panel').style.display = 'block';
       }
     }
 
     function buildStationMarkers(priceMax) {
-      stationMarkers.clearLayers();
+      clusterGroup.clearLayers();
       let count = 0;
 
       allStations.forEach(s => {
         if (s.regular <= 0 || s.regular > priceMax) return;
         count++;
 
-        const color = priceColor(s.regular, minPrice, maxPrice);
-        const icon = L.divIcon({
-          html: pumpSvg(color),
-          className: '',
-          iconSize: [20, 24],
-          iconAnchor: [10, 24],
-          popupAnchor: [0, -24],
-        });
-
-        const marker = L.marker([s.lat, s.lng], { icon });
+        const marker = L.marker([s.lat, s.lng]);
 
         let popup = `<strong>${s.name}</strong><br>`;
         popup += `${s.brand}<br>`;
@@ -243,49 +230,10 @@
         if (s.diesel > 0) popup += `<br><strong>Diesel:</strong> ${s.diesel.toFixed(1)}¢/L`;
         marker.bindPopup(popup);
 
-        stationMarkers.addLayer(marker);
+        clusterGroup.addLayer(marker);
       });
 
       document.getElementById('visible-count').textContent = count + ' / ' + allStations.length + ' stations';
-    }
-
-    function pumpSvg(fill) {
-      return `<svg class="pump-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 30" width="20" height="24">
-        <!-- pump body -->
-        <rect x="3" y="6" width="12" height="16" rx="1.5" fill="${fill}" stroke="#fff" stroke-width="1.2"/>
-        <!-- gauge window -->
-        <rect x="5.5" y="8.5" width="7" height="5" rx="0.8" fill="#fff" opacity="0.45"/>
-        <!-- base -->
-        <rect x="1.5" y="22" width="15" height="2.5" rx="1" fill="${fill}" stroke="#fff" stroke-width="1"/>
-        <!-- nozzle arm -->
-        <path d="M15 10 h3 v8 h-1.5 v-2 h-1.5" fill="none" stroke="#fff" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-        <!-- hose nozzle -->
-        <rect x="15" y="16" width="4" height="2.5" rx="0.6" fill="${fill}" stroke="#fff" stroke-width="0.8"/>
-        <!-- top cap -->
-        <rect x="5" y="4" width="8" height="2.5" rx="1" fill="${fill}" stroke="#fff" stroke-width="0.8"/>
-      </svg>`;
-    }
-
-    function priceColor(price, min, max) {
-      const t = Math.max(0, Math.min(1, (price - min) / (max - min)));
-      const colors = [
-        [49, 54, 149],
-        [69, 117, 180],
-        [116, 173, 209],
-        [171, 217, 233],
-        [254, 224, 144],
-        [253, 174, 97],
-        [244, 109, 67],
-        [215, 48, 39],
-        [165, 0, 38],
-      ];
-      const idx = Math.min(Math.floor(t * (colors.length - 1)), colors.length - 2);
-      const frac = t * (colors.length - 1) - idx;
-      const c0 = colors[idx], c1 = colors[idx + 1];
-      const r = Math.round(c0[0] + (c1[0] - c0[0]) * frac);
-      const g = Math.round(c0[1] + (c1[1] - c0[1]) * frac);
-      const b = Math.round(c0[2] + (c1[2] - c0[2]) * frac);
-      return `rgb(${r},${g},${b})`;
     }
   </script>
 </body>
