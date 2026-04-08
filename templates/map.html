@@ -10,17 +10,17 @@
   <div id="map"></div>
 
   <div id="slider-panel" class="map-panel">
-    <div class="fuel-btns">
-      <button class="fuel-btn active" data-fuel="regular">Régulier</button>
-      <button class="fuel-btn" data-fuel="super">Super</button>
-      <button class="fuel-btn" data-fuel="diesel">Diesel</button>
-    </div>
     <select id="region-select">
       <option value="">Toutes les régions</option>
       {{range .Regions}}
       <option value="{{.}}">{{.}}</option>
       {{end}}
     </select>
+    <div class="fuel-btns">
+      <button class="fuel-btn active" data-fuel="regular">Régulier</button>
+      <button class="fuel-btn" data-fuel="super">Super</button>
+      <button class="fuel-btn" data-fuel="diesel">Diesel</button>
+    </div>
     <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px;">
       <div class="fuel-btns" id="cluster-btns" style="margin-bottom:0;">
         <button class="fuel-btn cluster-btn" data-mode="min">Min</button>
@@ -38,6 +38,10 @@
         </div>
       </div>
     </div>
+    <label style="display:flex; align-items:center; gap:6px; margin-bottom:10px; font-size:14px; cursor:pointer;">
+      <input type="checkbox" role="switch" id="costco-toggle" checked>
+      Costco
+    </label>
     <label for="price-slider">Prix max: <span id="slider-label">-</span></label>
     <input type="range" id="price-slider" min="0" max="300" step="0.5" value="300">
     <div id="slider-value">

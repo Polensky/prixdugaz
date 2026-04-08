@@ -137,7 +137,8 @@ func main() {
 	http.HandleFunc("/api/stats/region", handleRegionStats)
 	http.HandleFunc("/api/station-deltas", handleStationDeltas)
 
-	// Static assets (map.js, stats.js, etc.)
+	// Static assets (style.css, map.js, stats.js, etc.)
+	http.Handle("/style.css", http.FileServer(http.FS(staticSub)))
 	http.Handle("/map.js", http.FileServer(http.FS(staticSub)))
 	http.Handle("/stats.js", http.FileServer(http.FS(staticSub)))
 

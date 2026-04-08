@@ -7,6 +7,7 @@
   let currentFuel   = 'regular';
   let currentRegion = '';
   let clusterMode   = 'avg'; // 'min' | 'avg' | 'max'
+  let showCostco    = true;
   let allStations   = window.__stations || [];
   let allMarkers    = [];
   let visibleSet    = new Set();
@@ -112,9 +113,11 @@
     clusterGroup.clearLayers();
     visibleSet.clear();
 
-    const scopedStations = currentRegion
-      ? allStations.filter(s => s.region === currentRegion)
-      : allStations;
+    const scopedStations = allStations.filter(s => {
+      if (currentRegion && s.region !== currentRegion) return false;
+      if (!showCostco && (s.brand || '').toLowerCase() === 'costco') return false;
+      return true;
+    });
     const prices = scopedStations.map(s => s[currentFuel]).filter(p => p > 0);
     minPrice = prices.length ? Math.min(...prices) : 0;
     maxPrice = prices.length ? Math.max(...prices) : 300;
@@ -164,7 +167,8 @@
     allStations.forEach((s, i) => {
       const price    = s[currentFuel];
       const inRegion = !currentRegion || s.region === currentRegion;
-      const visible  = inRegion && (price <= 0 || price <= priceMax);
+      const isCostco = (s.brand || '').toLowerCase() === 'costco';
+      const visible  = inRegion && (price <= 0 || price <= priceMax) && (!isCostco || showCostco);
       if (visible && !visibleSet.has(i)) {
         toAdd.push(allMarkers[i]);
         visibleSet.add(i);
@@ -222,6 +226,11 @@
           b.classList.toggle('active', b.dataset.fuel === currentFuel));
         rebuildMarkers();
       });
+    });
+
+    document.getElementById('costco-toggle').addEventListener('change', function () {
+      showCostco = this.checked;
+      rebuildMarkers();
     });
   }
 
