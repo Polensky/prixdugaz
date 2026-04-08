@@ -119,8 +119,8 @@
       return true;
     });
     const prices = scopedStations.map(s => s[currentFuel]).filter(p => p > 0);
-    minPrice = prices.length ? Math.min(...prices) : 0;
-    maxPrice = prices.length ? Math.max(...prices) : 300;
+    minPrice = prices.length ? prices.reduce((m, p) => p < m ? p : m, prices[0]) : 0;
+    maxPrice = prices.length ? prices.reduce((m, p) => p > m ? p : m, prices[0]) : 300;
 
     const slider = document.getElementById('price-slider');
     slider.min   = Math.floor(minPrice);
@@ -136,7 +136,15 @@
     document.getElementById('max-price').textContent    = maxPrice.toFixed(1) + '¢';
 
     const GREY = '#9ca3af';
-    allMarkers = allStations.map(s => {
+    // Only create Leaflet marker objects for stations that pass the current
+    // region/Costco filter — avoids allocating ~3000 markers when a region is selected.
+    allMarkers = allStations.map((s, i) => {
+      const inRegion = !currentRegion || s.region === currentRegion;
+      const isCostco = (s.brand || '').toLowerCase() === 'costco';
+      if (!inRegion || (isCostco && !showCostco)) {
+        return null;
+      }
+
       const price = s[currentFuel];
       const fill  = price > 0 ? priceColor(price, minPrice, maxPrice) : GREY;
       const label = price > 0 ? price.toFixed(1) : '—';
@@ -146,14 +154,24 @@
       });
       const marker  = L.marker([s.lat, s.lng], { icon });
       marker.fuelPrices = { regular: s.regular, super: s.super, diesel: s.diesel };
-      const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(s.address + ', Québec')}`;
-      const d       = stationDeltas[s.address] || {};
-      const eh      = d.elapsedHours != null ? d.elapsedHours : null;
-      let popup     = `<strong>${s.name}</strong><br>${brandBadgeHtml(s.brand)}<br><a href="${mapsUrl}" target="_blank" rel="noopener">${s.address}</a><br>`;
-      popup += `<br><strong>Régulier:</strong> ${s.regular.toFixed(1)}¢/L${priceDeltaHtml(d.regular, eh)}`;
-      if (s.super  > 0) popup += `<br><strong>Super:</strong> ${s.super.toFixed(1)}¢/L${priceDeltaHtml(d.super, eh)}`;
-      if (s.diesel > 0) popup += `<br><strong>Diesel:</strong> ${s.diesel.toFixed(1)}¢/L${priceDeltaHtml(d.diesel, eh)}`;
-      marker.bindPopup(popup);
+
+      // Lazily build popup HTML on first open to avoid doing string work
+      // for every station during initial render.
+      let popupBuilt = false;
+      marker.on('popupopen', function () {
+        if (popupBuilt) return;
+        popupBuilt = true;
+        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(s.address + ', Québec')}`;
+        const d       = stationDeltas[s.address] || {};
+        const eh      = d.elapsedHours != null ? d.elapsedHours : null;
+        let popup     = `<strong>${s.name}</strong><br>${brandBadgeHtml(s.brand)}<br><a href="${mapsUrl}" target="_blank" rel="noopener">${s.address}</a><br>`;
+        popup += `<br><strong>Régulier:</strong> ${s.regular.toFixed(1)}¢/L${priceDeltaHtml(d.regular, eh)}`;
+        if (s.super  > 0) popup += `<br><strong>Super:</strong> ${s.super.toFixed(1)}¢/L${priceDeltaHtml(d.super, eh)}`;
+        if (s.diesel > 0) popup += `<br><strong>Diesel:</strong> ${s.diesel.toFixed(1)}¢/L${priceDeltaHtml(d.diesel, eh)}`;
+        marker.getPopup().setContent(popup);
+      });
+      marker.bindPopup('');
+
       return marker;
     });
 
@@ -165,15 +183,18 @@
     const toRemove = [];
 
     allStations.forEach((s, i) => {
+      const marker   = allMarkers[i];
+      // Markers for filtered-out stations (wrong region/Costco) are null.
+      if (!marker) return;
       const price    = s[currentFuel];
       const inRegion = !currentRegion || s.region === currentRegion;
       const isCostco = (s.brand || '').toLowerCase() === 'costco';
       const visible  = inRegion && (price <= 0 || price <= priceMax) && (!isCostco || showCostco);
       if (visible && !visibleSet.has(i)) {
-        toAdd.push(allMarkers[i]);
+        toAdd.push(marker);
         visibleSet.add(i);
       } else if (!visible && visibleSet.has(i)) {
-        toRemove.push(allMarkers[i]);
+        toRemove.push(marker);
         visibleSet.delete(i);
       }
     });

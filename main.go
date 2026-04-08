@@ -21,6 +21,33 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// gzipResponseWriter wraps http.ResponseWriter and compresses the response body
+// with gzip when the client supports it.
+type gzipResponseWriter struct {
+	http.ResponseWriter
+	gz *gzip.Writer
+}
+
+func (g *gzipResponseWriter) Write(b []byte) (int, error) {
+	return g.gz.Write(b)
+}
+
+// withGzip wraps an http.HandlerFunc so that responses are gzip-compressed when
+// the client sends Accept-Encoding: gzip.
+func withGzip(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			h(w, r)
+			return
+		}
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Vary", "Accept-Encoding")
+		gz := gzip.NewWriter(w)
+		defer gz.Close()
+		h(&gzipResponseWriter{ResponseWriter: w, gz: gz}, r)
+	}
+}
+
 //go:embed static/*
 var staticFiles embed.FS
 
@@ -83,10 +110,14 @@ type StatsResponse struct {
 	Snapshots []Snapshot `json:"snapshots"`
 }
 
-// In-memory cache
+// In-memory cache. All fields are populated atomically under cacheMu.Lock().
 var (
-	cacheMu    sync.RWMutex
-	cachedResp *StationsResponse
+	cacheMu            sync.RWMutex
+	cachedResp         *StationsResponse
+	cachedStationsJSON []byte   // pre-serialised resp.Stations
+	cachedDeltasJSON   []byte   // pre-serialised buildDeltas() result
+	cachedRegions      []string // sorted, deduplicated region names
+	cachedLastUpdated  string   // human-readable French date string
 )
 
 // Fetch cooldown state: prevents request-triggered fetches from
@@ -134,9 +165,9 @@ func main() {
 
 	// HTML page routes
 	http.HandleFunc("/", handleRoot)
-	http.HandleFunc("/map", handleMapPage)
-	http.HandleFunc("/stats", handleStatsPage)
-	http.HandleFunc("/stats/content", handleStatsContent)
+	http.HandleFunc("/map", withGzip(handleMapPage))
+	http.HandleFunc("/stats", withGzip(handleStatsPage))
+	http.HandleFunc("/stats/content", withGzip(handleStatsContent))
 
 	// JSON API routes (kept for backwards-compatibility)
 	http.HandleFunc("/api/stations", handleStations)
@@ -145,10 +176,18 @@ func main() {
 	http.HandleFunc("/api/stats/region", handleRegionStats)
 	http.HandleFunc("/api/station-deltas", handleStationDeltas)
 
+	// staticHandler serves embedded static assets with a 1-day Cache-Control header.
+	// The assets are immutable per binary build, so a long TTL is safe.
+	staticFS := http.FileServer(http.FS(staticSub))
+	staticHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		staticFS.ServeHTTP(w, r)
+	}
+
 	// Static assets (style.css, map.js, stats.js, etc.)
-	http.Handle("/style.css", http.FileServer(http.FS(staticSub)))
-	http.Handle("/map.js", http.FileServer(http.FS(staticSub)))
-	http.Handle("/stats.js", http.FileServer(http.FS(staticSub)))
+	http.HandleFunc("/style.css", staticHandler)
+	http.HandleFunc("/map.js", staticHandler)
+	http.HandleFunc("/stats.js", staticHandler)
 
 	log.Printf("Listening on http://localhost:%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
@@ -243,51 +282,16 @@ func handleMapPage(w http.ResponseWriter, r *http.Request) {
 
 	cacheMu.RLock()
 	resp := cachedResp
+	stationsJSON := cachedStationsJSON
+	deltasJSON := cachedDeltasJSON
+	regions := cachedRegions
+	lastUpdated := cachedLastUpdated
 	cacheMu.RUnlock()
 
 	if resp == nil {
 		// Data not yet ready; render layout with a loading message.
 		renderTemplate(w, "layout.html", mapPageData{Page: "map"})
 		return
-	}
-
-	// Build sorted unique region list from in-memory station data.
-	regionSet := map[string]struct{}{}
-	for _, s := range resp.Stations {
-		if s.Region != "" {
-			regionSet[s.Region] = struct{}{}
-		}
-	}
-	regions := make([]string, 0, len(regionSet))
-	for r := range regionSet {
-		regions = append(regions, r)
-	}
-	sort.Strings(regions)
-
-	// Encode station and delta data for inline script injection.
-	stationsJSON, err := json.Marshal(resp.Stations)
-	if err != nil {
-		http.Error(w, "encoding stations", http.StatusInternalServerError)
-		return
-	}
-
-	deltas, err := buildDeltas()
-	if err != nil {
-		log.Printf("build deltas: %v", err)
-		deltas = map[string]StationDelta{}
-	}
-	deltasJSON, err := json.Marshal(deltas)
-	if err != nil {
-		http.Error(w, "encoding deltas", http.StatusInternalServerError)
-		return
-	}
-
-	lastUpdated := ""
-	if resp.LastUpdated != "" {
-		if t, err := time.Parse(time.RFC3339, resp.LastUpdated); err == nil {
-			lastUpdated = "Dernière mise à jour: " + t.In(time.FixedZone("ET", -4*3600)).
-				Format("2 January 2006, 15:04")
-		}
 	}
 
 	data := mapPageData{
@@ -783,6 +787,55 @@ func fetchAndStore() {
 	if resp.LastUpdated == "" {
 		return
 	}
+
+	// Pre-compute derived data that every map page render needs.
+	// This runs once per fetch (every ~5 min) rather than on every HTTP request.
+
+	// Serialise stations JSON.
+	stationsJSON, err := json.Marshal(resp.Stations)
+	if err != nil {
+		log.Printf("marshal stations: %v", err)
+		stationsJSON = []byte("[]")
+	}
+
+	// Build and serialise deltas JSON.
+	deltas, err := buildDeltas()
+	if err != nil {
+		log.Printf("build deltas: %v", err)
+		deltas = map[string]StationDelta{}
+	}
+	deltasJSON, err := json.Marshal(deltas)
+	if err != nil {
+		log.Printf("marshal deltas: %v", err)
+		deltasJSON = []byte("{}")
+	}
+
+	// Build sorted region list.
+	regionSet := map[string]struct{}{}
+	for _, s := range resp.Stations {
+		if s.Region != "" {
+			regionSet[s.Region] = struct{}{}
+		}
+	}
+	regions := make([]string, 0, len(regionSet))
+	for reg := range regionSet {
+		regions = append(regions, reg)
+	}
+	sort.Strings(regions)
+
+	// Format last-updated string in French.
+	lastUpdated := ""
+	if t, parseErr := time.Parse(time.RFC3339, resp.LastUpdated); parseErr == nil {
+		lastUpdated = "Dernière mise à jour: " + t.In(time.FixedZone("ET", -4*3600)).
+			Format("2 January 2006, 15:04")
+	}
+
+	cacheMu.Lock()
+	cachedStationsJSON = stationsJSON
+	cachedDeltasJSON = deltasJSON
+	cachedRegions = regions
+	cachedLastUpdated = lastUpdated
+	cacheMu.Unlock()
 
 	// Compute and persist global aggregate.
 	snap := computeSnapshot(resp)
