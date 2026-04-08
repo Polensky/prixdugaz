@@ -1,4 +1,4 @@
-module github.com/polen/essence
+module github.com/polen/prixdugaz
 
 go 1.25.0
 

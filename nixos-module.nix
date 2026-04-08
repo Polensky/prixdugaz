@@ -2,48 +2,48 @@
 { config, lib, pkgs, ... }:
 
 let
-  cfg = config.services.essence;
+  cfg = config.services.prixdugaz;
 in
 {
-  options.services.essence = {
-    enable = lib.mkEnableOption "Essence Quebec gas price map";
+  options.services.prixdugaz = {
+    enable = lib.mkEnableOption "Prix du gaz Quebec gas price map";
 
     port = lib.mkOption {
       type = lib.types.port;
       default = 8080;
-      description = "Port the Essence web server listens on.";
+      description = "Port the Prix du gaz web server listens on.";
     };
 
     dataDir = lib.mkOption {
       type = lib.types.str;
-      default = "/var/lib/essence";
+      default = "/var/lib/prixdugaz";
       description = "Directory where the SQLite database is stored.";
     };
 
     openFirewall = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = "Whether to open the firewall for the Essence web server port.";
+      description = "Whether to open the firewall for the Prix du gaz web server port.";
     };
 
     package = lib.mkOption {
       type = lib.types.package;
       default = self.packages.${pkgs.system}.default;
       defaultText = lib.literalExpression "self.packages.\${pkgs.system}.default";
-      description = "The Essence package to use.";
+      description = "The Prix du gaz package to use.";
     };
   };
 
   config = lib.mkIf cfg.enable {
-    systemd.services.essence = {
-      description = "Essence Quebec - Gas price map";
+    systemd.services.prixdugaz = {
+      description = "Prix du gaz Quebec - Gas price map";
       wantedBy = [ "multi-user.target" ];
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
 
       environment = {
-        PORT       = toString cfg.port;
-        ESSENCE_DB = "${cfg.dataDir}/essence.db";
+        PORT          = toString cfg.port;
+        PRIXDUGAZ_DB  = "${cfg.dataDir}/prixdugaz.db";
       };
 
       serviceConfig = {
@@ -52,7 +52,7 @@ in
         RestartSec = 5;
 
         DynamicUser = true;
-        StateDirectory = "essence";
+        StateDirectory = "prixdugaz";
         StateDirectoryMode = "0750";
 
         # Hardening

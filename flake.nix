@@ -1,5 +1,5 @@
 {
-  description = "Essence Quebec - Gas price heatmap";
+  description = "Prix du gaz Quebec - Gas price heatmap";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -21,7 +21,7 @@
         };
 
         packages.default = pkgs.buildGoModule {
-          pname = "essence";
+          pname = "prixdugaz";
           version = "0.1.0";
           src = ./.;
           vendorHash = "sha256-iiobqg0INKuzTyC/VMGcX5CfroqqbKnwlJLVAOCZbEE=";

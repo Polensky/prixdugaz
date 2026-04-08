@@ -1,6 +1,6 @@
-# Essence
+# Prix du gaz
 
-Carte de chaleur des prix d'essence au Québec affichant les prix en temps réel des stations à travers la province.
+Carte des prix d'essence au Québec affichant les prix en temps réel des stations à travers la province.
 
 ## Fonctionnalités
 
@@ -28,7 +28,7 @@ direnv allow
 go run .
 
 # Ou avec des paramètres personnalisés
-PORT=8080 ESSENCE_DB=./essence.db go run .
+PORT=8080 PRIXDUGAZ_DB=./prixdugaz.db go run .
 ```
 
 Le serveur démarre à `http://localhost:8080` et redirige `/` vers `/map`.
@@ -49,19 +49,19 @@ Le serveur démarre à `http://localhost:8080` et redirige `/` vers `/map`.
 | Variable | Défaut | Description |
 |----------|--------|-------------|
 | `PORT` | `8080` | Port d'écoute HTTP |
-| `ESSENCE_DB` | `./essence.db` | Chemin de la base de données SQLite |
+| `PRIXDUGAZ_DB` | `./prixdugaz.db` | Chemin de la base de données SQLite |
 
 ## Compilation
 
 ```sh
-go build -o essence .
+go build -o prixdugaz .
 ```
 
 Ou via Nix :
 
 ```sh
 nix build
-./result/bin/essence
+./result/bin/prixdugaz
 ```
 
 ## Formatage et analyse statique
@@ -71,6 +71,39 @@ gofmt -w .
 goimports -w .
 go vet ./...
 ```
+
+## Déploiement sur NixOS
+
+Le projet fournit un module NixOS via le flake. Ajoutez-le à votre configuration :
+
+**1. Ajoutez le flake comme entrée (`flake.nix`) :**
+
+```nix
+inputs.prixdugaz.url = "github:Polensky/prixdugaz";
+```
+
+**2. Importez le module NixOS et activez le service :**
+
+```nix
+imports = [ inputs.prixdugaz.nixosModules.default ];
+
+services.prixdugaz = {
+  enable = true;
+  port = 8080;          # optionnel, 8080 par défaut
+  openFirewall = true;  # optionnel, ouvre le port dans le pare-feu
+};
+```
+
+**Options disponibles :**
+
+| Option | Défaut | Description |
+|--------|--------|-------------|
+| `enable` | `false` | Active le service |
+| `port` | `8080` | Port d'écoute HTTP |
+| `dataDir` | `/var/lib/prixdugaz` | Répertoire de la base de données SQLite |
+| `openFirewall` | `false` | Ouvre le port dans le pare-feu |
+| `package` | flake par défaut | Paquet Prix du gaz à utiliser |
+
 
 ## Licence
 

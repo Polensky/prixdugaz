@@ -107,9 +107,9 @@ func main() {
 		port = defaultPort
 	}
 
-	dbPath := os.Getenv("ESSENCE_DB")
+	dbPath := os.Getenv("PRIXDUGAZ_DB")
 	if dbPath == "" {
-		dbPath = "./essence.db"
+		dbPath = "./prixdugaz.db"
 	}
 
 	var err error
@@ -983,7 +983,7 @@ func fetchAndParse() (*StationsResponse, error) {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 	req.Header.Set("Accept-Encoding", "gzip")
-	req.Header.Set("User-Agent", "essence-quebec-map/1.0")
+	req.Header.Set("User-Agent", "prixdugaz-quebec-map/1.0")
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
