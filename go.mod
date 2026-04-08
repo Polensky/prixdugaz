@@ -1,4 +1,4 @@
-module github.com/polen/prixdugaz
+module github.com/Polensky/prixdugaz
 
 go 1.25.0
 

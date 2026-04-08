@@ -47,6 +47,17 @@ html, body { height: 100%; margin: 0; padding: 0; }
   color: var(--primary-foreground);
 }
 #topnav nav a svg { flex-shrink: 0; }
+.github-link {
+  margin-left: auto;
+  display: flex; align-items: center;
+  color: var(--muted-foreground);
+  padding: 5px 6px; border-radius: 6px;
+  transition: background 0.12s, color 0.12s;
+}
+.github-link:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
 
 /* ── App shell ───────────────────────────────────────── */
 #app {
