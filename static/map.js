@@ -131,7 +131,7 @@
     document.getElementById('slider-label').textContent = Math.ceil(maxPrice) + '¢/L';
 
     const fuelLabel = { regular: 'Régulier', super: 'Super', diesel: 'Diesel' }[currentFuel];
-    document.getElementById('legend-title').textContent = `Prix ${fuelLabel.toLowerCase()} (¢/L)`;
+    document.getElementById('legend-title').textContent = `${fuelLabel} (¢/L)`;
     document.getElementById('min-price').textContent    = minPrice.toFixed(1) + '¢';
     document.getElementById('max-price').textContent    = maxPrice.toFixed(1) + '¢';
 
@@ -232,6 +232,29 @@
       showCostco = this.checked;
       rebuildMarkers();
     });
+
+    // ── Mobile filter panel toggle ─────────────────────────
+    var filterToggle  = document.getElementById('filter-toggle');
+    var sliderPanel   = document.getElementById('slider-panel');
+    var filterBackdrop = document.getElementById('filter-backdrop');
+
+    function openFilterPanel() {
+      sliderPanel.classList.add('open');
+      filterToggle.classList.add('hidden');
+      if (filterBackdrop) filterBackdrop.classList.add('visible');
+    }
+    function closeFilterPanel() {
+      sliderPanel.classList.remove('open');
+      filterToggle.classList.remove('hidden');
+      if (filterBackdrop) filterBackdrop.classList.remove('visible');
+    }
+
+    if (filterToggle) {
+      filterToggle.addEventListener('click', openFilterPanel);
+    }
+    if (filterBackdrop) {
+      filterBackdrop.addEventListener('click', closeFilterPanel);
+    }
   }
 
   // ── Initialise ─────────────────────────────────────────────
@@ -279,7 +302,6 @@
     });
 
     loadingEl.style.display = 'none';
-    document.getElementById('map-stats').textContent = allStations.length + ' stations';
 
     rebuildMarkers();
     map.addLayer(clusterGroup);
