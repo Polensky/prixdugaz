@@ -4,10 +4,16 @@ Guidance for agentic coding agents working in this repository.
 
 ## Project Overview
 
-**Essence** is a Quebec gas price heatmap — a minimal, self-contained web application with two source files:
+**Essence** is a Quebec gas price heatmap — a minimal web application with the following source files:
 
-- `main.go` — the entire Go backend (HTTP server, SQLite persistence, upstream polling)
-- `static/index.html` — the entire frontend (Leaflet map, Chart.js charts, vanilla JS)
+- `main.go` — the entire Go backend (HTTP server, SQLite persistence, upstream polling, HTML template rendering)
+- `templates/` — Go `html/template` files rendered server-side
+  - `layout.html` — base layout (head, nav, htmx script, oat CSS); defines `content` and `scripts` blocks
+  - `map.html` — map page content + scripts blocks
+  - `stats.html` — stats page shell (region dropdown, `#stats-content` target div)
+  - `stats-content.html` — stats fragment (cards, Chart.js canvas, history table); swapped by htmx on region/range changes
+- `static/map.js` — Leaflet map initialization, marker rendering, cluster logic, controls wiring
+- `static/stats.js` — Chart.js initialization; re-runs after htmx swaps `#stats-content`
 
 Keep this architecture. Do not split `main.go` into multiple files or introduce a frontend build step unless explicitly asked.
 
@@ -179,19 +185,22 @@ type Station struct { ... }
 func poller() { ... }
 ```
 
-## Frontend Code Style (`static/index.html`)
+## Frontend Code Style
 
-- **No framework, no build step.** Plain HTML, CSS, and JavaScript in a single file.
-- **Inline** `<style>` and `<script>` blocks — no external local JS/CSS files.
-- **CDN** dependencies only: Leaflet, leaflet.markercluster, Chart.js, `@knadh/oat` CSS.
+- **No framework, no build step.** Go `html/template` for HTML; plain JS in `static/`.
+- **htmx** for dynamic content: region/range changes on the stats page swap `#stats-content` via `hx-get`. Navigation between pages swaps `#content`.
+- **CDN** dependencies only: htmx, Leaflet, leaflet.markercluster, Chart.js, `@knadh/oat` CSS.
 - **`camelCase`** for all JS variables and function names.
 - **`fetch()` with `.then()` promise chains** — not `async/await`.
 - **CSS custom properties** (`--primary`, `--border`, etc.) from the `oat` design token system.
 - **French language** — all user-facing text must be in French (`lang="fr"` on `<html>`).
+- Station data for the map is inlined as `window.__stations` / `window.__deltas` by the server in `map.html`; no separate `/api/stations` fetch needed.
+- Stats chart data is inlined as `window.__statsData` in the `stats-content.html` fragment; `window.__initStatsChart()` is called inline after each swap.
 
 ## Architecture Notes
 
 - Static assets are embedded into the binary at compile time via `//go:embed static/*`. No file serving from disk at runtime.
+- Templates are embedded via `//go:embed templates/*` and parsed once at startup into a `*template.Template`.
 - The SQLite driver is `modernc.org/sqlite` — a pure-Go, CGo-free implementation. Do not introduce CGo or replace this driver.
 - Deployment target is a NixOS systemd service defined in `nixos-module.nix`.
 - The module `github.com/polen/essence` targets Go 1.25+.

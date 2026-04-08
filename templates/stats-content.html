@@ -1,0 +1,106 @@
+<!-- Stat cards -->
+<div class="stat-cards">
+  <article class="card">
+    <header><p>Régulier — Moyenne</p></header>
+    <p class="stat-value">{{fmtPrice .Last.RegularAvg}}</p>
+    <p class="stat-sub">¢/L</p>
+  </article>
+  <article class="card">
+    <header><p>Régulier — Min</p></header>
+    <p class="stat-value">{{fmtPrice .Last.RegularMin}}</p>
+    <p class="stat-sub">¢/L</p>
+  </article>
+  <article class="card">
+    <header><p>Régulier — Max</p></header>
+    <p class="stat-value">{{fmtPrice .Last.RegularMax}}</p>
+    <p class="stat-sub">¢/L</p>
+  </article>
+  <article class="card">
+    <header><p>Super — Moyenne</p></header>
+    <p class="stat-value">{{fmtPrice .Last.SuperAvg}}</p>
+    <p class="stat-sub">¢/L</p>
+  </article>
+  <article class="card">
+    <header><p>Diesel — Moyenne</p></header>
+    <p class="stat-value">{{fmtPrice .Last.DieselAvg}}</p>
+    <p class="stat-sub">¢/L</p>
+  </article>
+  <article class="card">
+    <header><p>Stations</p></header>
+    <p class="stat-value">{{if .Last.StationCount}}{{.Last.StationCount}}{{else}}—{{end}}</p>
+    <p class="stat-sub">dernière mise à jour</p>
+  </article>
+</div>
+
+<!-- Chart -->
+<div class="chart-wrap">
+  <h3>Évolution des prix</h3>
+  <p class="chart-subtitle">Prix moyen par carburant (¢/L)</p>
+  <div class="range-btns">
+    <button class="range-btn {{if eq .Days 7}}active{{end}}"
+            hx-get="/stats/content"
+            hx-target="#stats-content"
+            hx-include="#stats-region-select"
+            hx-vals='{"days": "7"}'
+            onclick="document.getElementById('stats-days').value='7'">7 jours</button>
+    <button class="range-btn {{if eq .Days 30}}active{{end}}"
+            hx-get="/stats/content"
+            hx-target="#stats-content"
+            hx-include="#stats-region-select"
+            hx-vals='{"days": "30"}'
+            onclick="document.getElementById('stats-days').value='30'">30 jours</button>
+    <button class="range-btn {{if eq .Days 0}}active{{end}}"
+            hx-get="/stats/content"
+            hx-target="#stats-content"
+            hx-include="#stats-region-select"
+            hx-vals='{"days": "0"}'
+            onclick="document.getElementById('stats-days').value='0'">Tout</button>
+  </div>
+  {{if .Snapshots}}
+  <canvas id="stats-chart-canvas"></canvas>
+  <script>
+    window.__statsData = {{.SnapshotsJSON}};
+    if (window.__initStatsChart) window.__initStatsChart();
+  </script>
+  {{else}}
+  <p class="no-data">Pas encore assez de données historiques.</p>
+  {{end}}
+</div>
+
+<!-- History table -->
+<div class="chart-wrap">
+  <h3>Historique récent</h3>
+  <p class="chart-subtitle">10 dernières mises à jour</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Régulier moy.</th>
+          <th>Régulier min</th>
+          <th>Régulier max</th>
+          <th>Super moy.</th>
+          <th>Diesel moy.</th>
+          <th>Stations</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{if .HistoryRows}}
+        {{range .HistoryRows}}
+        <tr>
+          <td>{{.Date}}</td>
+          <td>{{.RegularAvg}}</td>
+          <td>{{.RegularMin}}</td>
+          <td>{{.RegularMax}}</td>
+          <td>{{.SuperAvg}}</td>
+          <td>{{.DieselAvg}}</td>
+          <td>{{.StationCount}}</td>
+        </tr>
+        {{end}}
+        {{else}}
+        <tr><td colspan="7" style="text-align:center;color:var(--muted-foreground);">Aucune donnée</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
