@@ -310,6 +310,10 @@
     map.createPane('locatePane').style.zIndex = 650;
     L.control.zoom({ position: 'topright' }).addTo(map);
     var lastUpdatedText = (document.getElementById('last-updated') || {}).textContent || '';
+    var lastUpdatedMobile = document.getElementById('last-updated-mobile');
+    if (lastUpdatedMobile && lastUpdatedText) {
+      lastUpdatedMobile.textContent = lastUpdatedText;
+    }
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> | Données: <a href="https://regieessencequebec.ca">Régie de l\'énergie du Québec</a>' + (lastUpdatedText ? ' | ' + lastUpdatedText : ''),
       maxZoom: 18,

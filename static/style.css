@@ -96,6 +96,11 @@ html, body { height: 100%; margin: 0; padding: 0; overflow-x: hidden; }
 }
 #visible-count { margin-top: 6px; font-size: 11px; color: var(--muted-foreground); }
 
+/* Last-updated: only shown inside the mobile filter drawer */
+#last-updated-mobile {
+  display: none;
+}
+
 /* Map overlay panels — sit above the Leaflet tiles */
 .map-panel {
   background: var(--card);
@@ -315,6 +320,9 @@ html, body { height: 100%; margin: 0; padding: 0; overflow-x: hidden; }
 @media (max-width: 768px) {
   #filter-toggle { display: flex; }
 
+  #filter-toggle,
+  #locate-btn { bottom: 24px; }
+
   #slider-panel {
     position: fixed;
     top: auto; left: 0; right: 0; bottom: 0;
@@ -367,4 +375,15 @@ html, body { height: 100%; margin: 0; padding: 0; overflow-x: hidden; }
   .cluster-info-tip { display: none; }
   .cluster-hint { display: block; }
   .cluster-row { margin-bottom: 0; }
+
+  /* Hide Leaflet attribution bar on mobile */
+  .leaflet-control-attribution { display: none; }
+
+  /* Show last-updated inside the filter drawer */
+  #last-updated-mobile {
+    display: block;
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--muted-foreground);
+  }
 }
