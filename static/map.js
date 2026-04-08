@@ -18,6 +18,7 @@
   // ── Map setup (deferred to init section below) ─────────────
   let map;
   let clusterGroup;
+  let locateMarker = null;
 
   // ── Colour helpers ─────────────────────────────────────────
   function priceColor(price, min, max) {
@@ -284,6 +285,41 @@
     // Create map and cluster group now that the DOM is ready.
     map = L.map('map', { zoomControl: false }).setView([46.8, -71.2], 7);
     L.control.zoom({ position: 'topright' }).addTo(map);
+
+    // ── Locate-me control ──────────────────────────────────
+    var LocateControl = L.Control.extend({
+      options: { position: 'bottomright' },
+      onAdd: function () {
+        var container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+        var btn = L.DomUtil.create('a', '', container);
+        btn.href = '#';
+        btn.title = 'Ma position';
+        btn.setAttribute('role', 'button');
+        btn.setAttribute('aria-label', 'Ma position');
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:auto"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8" stroke-dasharray="2 4"/></svg>';
+        L.DomEvent.on(btn, 'click', function (e) {
+          L.DomEvent.preventDefault(e);
+          if (!navigator.geolocation) return;
+          navigator.geolocation.getCurrentPosition(function (pos) {
+            var latlng = [pos.coords.latitude, pos.coords.longitude];
+            map.setView(latlng, 14);
+            if (locateMarker) {
+              locateMarker.setLatLng(latlng);
+            } else {
+              locateMarker = L.circleMarker(latlng, {
+                radius: 10,
+                color: '#fff',
+                weight: 3,
+                fillColor: '#2563eb',
+                fillOpacity: 1,
+              }).addTo(map);
+            }
+          });
+        });
+        return container;
+      },
+    });
+    new LocateControl().addTo(map);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> | Données: <a href="https://regieessencequebec.ca">Régie de l\'énergie du Québec</a>',
       maxZoom: 18,
