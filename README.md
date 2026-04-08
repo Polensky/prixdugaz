@@ -64,14 +64,6 @@ nix build
 ./result/bin/prixdugaz
 ```
 
-## Formatage et analyse statique
-
-```sh
-gofmt -w .
-goimports -w .
-go vet ./...
-```
-
 ## Déploiement sur NixOS
 
 Le projet fournit un module NixOS via le flake. Ajoutez-le à votre configuration :
