@@ -28,9 +28,10 @@ var staticFiles embed.FS
 var templateFiles embed.FS
 
 const (
-	geojsonURL   = "https://regieessencequebec.ca/stations.geojson.gz"
-	defaultPort  = "8080"
-	pollInterval = 5 * time.Minute
+	geojsonURL    = "https://regieessencequebec.ca/stations.geojson.gz"
+	defaultPort   = "8080"
+	pollInterval  = 5 * time.Minute
+	fetchCooldown = 1 * time.Minute
 )
 
 // GeoJSON structures matching the upstream format.
@@ -86,6 +87,13 @@ type StatsResponse struct {
 var (
 	cacheMu    sync.RWMutex
 	cachedResp *StationsResponse
+)
+
+// Fetch cooldown state: prevents request-triggered fetches from
+// firing more often than fetchCooldown.
+var (
+	fetchMu       sync.Mutex
+	lastFetchTime time.Time
 )
 
 var db *sql.DB
@@ -231,6 +239,8 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 
 // handleMapPage renders the full map page (or just the content block for htmx).
 func handleMapPage(w http.ResponseWriter, r *http.Request) {
+	triggerFetch()
+
 	cacheMu.RLock()
 	resp := cachedResp
 	cacheMu.RUnlock()
@@ -718,17 +728,48 @@ func initDB(path string) (*sql.DB, error) {
 
 // poller fetches immediately then every pollInterval.
 func poller() {
-	fetchAndStore()
+	safeFetchAndStore()
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 	for range ticker.C {
-		fetchAndStore()
+		safeFetchAndStore()
 	}
+}
+
+// safeFetchAndStore calls fetchAndStore and recovers from any panic so the
+// poller goroutine stays alive.
+func safeFetchAndStore() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("panic in fetchAndStore: %v", r)
+		}
+	}()
+	fetchAndStore()
+}
+
+// triggerFetch kicks off a background fetchAndStore if at least fetchCooldown
+// has elapsed since the last fetch attempt. It returns immediately and never
+// blocks the caller.
+func triggerFetch() {
+	fetchMu.Lock()
+	if time.Since(lastFetchTime) < fetchCooldown {
+		fetchMu.Unlock()
+		return
+	}
+	lastFetchTime = time.Now()
+	fetchMu.Unlock()
+	go safeFetchAndStore()
 }
 
 // fetchAndStore fetches upstream data, updates the in-memory cache, and
 // persists a snapshot to SQLite if the data has a new generated_at value.
 func fetchAndStore() {
+	// Reset cooldown so poller-initiated fetches also prevent redundant
+	// request-triggered fetches.
+	fetchMu.Lock()
+	lastFetchTime = time.Now()
+	fetchMu.Unlock()
+
 	resp, err := fetchAndParse()
 	if err != nil {
 		log.Printf("fetch error: %v", err)
