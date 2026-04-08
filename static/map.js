@@ -255,6 +255,29 @@
       rebuildMarkers();
     });
 
+    // ── Locate-me button ───────────────────────────────────
+    var locateBtn = document.getElementById('locate-btn');
+    if (locateBtn) {
+      locateBtn.addEventListener('click', function () {
+        if (!navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition(function (pos) {
+          var latlng = [pos.coords.latitude, pos.coords.longitude];
+          map.setView(latlng, 14);
+          if (locateMarker) {
+            locateMarker.setLatLng(latlng);
+          } else {
+            var dotIcon = L.divIcon({
+              html: '<div class="locate-dot"><div class="locate-dot-pulse"></div><div class="locate-dot-inner"></div></div>',
+              className: '',
+              iconSize: [20, 20],
+              iconAnchor: [10, 10],
+            });
+            locateMarker = L.marker(latlng, { icon: dotIcon, pane: 'locatePane' }).addTo(map);
+          }
+        });
+      });
+    }
+
     // ── Mobile filter panel toggle ─────────────────────────
     var filterToggle  = document.getElementById('filter-toggle');
     var sliderPanel   = document.getElementById('slider-panel');
@@ -284,44 +307,11 @@
   try {
     // Create map and cluster group now that the DOM is ready.
     map = L.map('map', { zoomControl: false }).setView([46.8, -71.2], 7);
+    map.createPane('locatePane').style.zIndex = 650;
     L.control.zoom({ position: 'topright' }).addTo(map);
-
-    // ── Locate-me control ──────────────────────────────────
-    var LocateControl = L.Control.extend({
-      options: { position: 'bottomright' },
-      onAdd: function () {
-        var container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
-        var btn = L.DomUtil.create('a', '', container);
-        btn.href = '#';
-        btn.title = 'Ma position';
-        btn.setAttribute('role', 'button');
-        btn.setAttribute('aria-label', 'Ma position');
-        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:auto"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8" stroke-dasharray="2 4"/></svg>';
-        L.DomEvent.on(btn, 'click', function (e) {
-          L.DomEvent.preventDefault(e);
-          if (!navigator.geolocation) return;
-          navigator.geolocation.getCurrentPosition(function (pos) {
-            var latlng = [pos.coords.latitude, pos.coords.longitude];
-            map.setView(latlng, 14);
-            if (locateMarker) {
-              locateMarker.setLatLng(latlng);
-            } else {
-              locateMarker = L.circleMarker(latlng, {
-                radius: 10,
-                color: '#fff',
-                weight: 3,
-                fillColor: '#2563eb',
-                fillOpacity: 1,
-              }).addTo(map);
-            }
-          });
-        });
-        return container;
-      },
-    });
-    new LocateControl().addTo(map);
+    var lastUpdatedText = (document.getElementById('last-updated') || {}).textContent || '';
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> | Données: <a href="https://regieessencequebec.ca">Régie de l\'énergie du Québec</a>',
+      attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> | Données: <a href="https://regieessencequebec.ca">Régie de l\'énergie du Québec</a>' + (lastUpdatedText ? ' | ' + lastUpdatedText : ''),
       maxZoom: 18,
     }).addTo(map);
 

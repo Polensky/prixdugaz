@@ -128,14 +128,53 @@ html, body { height: 100%; margin: 0; padding: 0; }
   font-size: 10px; color: var(--muted-foreground);
 }
 
-#last-updated {
-  position: absolute; bottom: 24px; right: 8px;
-  padding: 5px 10px;
-  z-index: 1000; font-size: 11px;
-  color: var(--muted-foreground);
-}
-
 .pin-icon { filter: drop-shadow(0 1px 3px rgba(0,0,0,0.35)); }
+
+#locate-btn {
+  position: absolute; bottom: 34px; right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  cursor: pointer;
+  z-index: 1000;
+}
+#locate-btn:hover { background: var(--muted); }
+
+/* Locate-me blue dot + pulse ring */
+.locate-dot {
+  position: relative;
+  width: 20px;
+  height: 20px;
+}
+.locate-dot-inner {
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: #2563eb;
+  border: 2.5px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  z-index: 1;
+}
+.locate-dot-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #2563eb;
+  opacity: 0.35;
+  animation: locate-pulse 1.8s ease-out infinite;
+}
+@keyframes locate-pulse {
+  0%   { transform: scale(0.6); opacity: 0.5; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
 
 .cluster-info-tip {
   position: relative;
