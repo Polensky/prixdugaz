@@ -158,6 +158,13 @@ html, body { height: 100%; margin: 0; padding: 0; }
   line-height: 1.6;
 }
 
+.cluster-hint {
+  display: none;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  margin-bottom: 10px;
+}
+
 .fuel-btn {
   padding: 4px 12px;
   border: 1px solid var(--border);
@@ -243,7 +250,7 @@ html, body { height: 100%; margin: 0; padding: 0; }
 #filter-toggle {
   display: none;             /* hidden on desktop */
   position: absolute;
-  bottom: 16px; left: 12px;
+  bottom: 24px; left: 12px;
   z-index: 1001;
   padding: 8px 14px;
   font-size: 13px; font-weight: 600;
@@ -295,11 +302,19 @@ html, body { height: 100%; margin: 0; padding: 0; }
   /* Hide the toggle when panel is open */
   #filter-toggle.hidden { display: none; }
 
-  /* Cluster tooltip: constrain on small screens */
-  .cluster-info-tooltip {
-    white-space: normal;
-    max-width: 70vw;
-    left: auto; right: 0;
-    transform: translateY(-50%);
+  /* Fuel & cluster toggle buttons: full-width on mobile */
+  #slider-panel .fuel-btns {
+    width: 100%;
   }
+  .fuel-btn {
+    flex: 1;
+    text-align: center;
+    padding: 8px 6px;
+    font-size: 13px;
+  }
+
+  /* Cluster tooltip: hide icon, show hint text on mobile */
+  .cluster-info-tip { display: none; }
+  .cluster-hint { display: block; }
+  .cluster-row { margin-bottom: 0; }
 }

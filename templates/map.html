@@ -26,8 +26,8 @@
       <button class="fuel-btn" data-fuel="super">Super</button>
       <button class="fuel-btn" data-fuel="diesel">Diesel</button>
     </div>
-    <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px;">
-      <div class="fuel-btns" id="cluster-btns" style="margin-bottom:0;">
+    <div class="cluster-row" style="display:flex; align-items:center; gap:6px; margin-bottom:10px;">
+      <div class="fuel-btns" id="cluster-btns" style="margin-bottom:0; flex:1;">
         <button class="fuel-btn cluster-btn" data-mode="min">Min</button>
         <button class="fuel-btn cluster-btn active" data-mode="avg">Moy</button>
         <button class="fuel-btn cluster-btn" data-mode="max">Max</button>
@@ -43,6 +43,7 @@
         </div>
       </div>
     </div>
+    <div class="cluster-hint">Prix affiché sur chaque groupe de stations.</div>
     <label style="display:flex; align-items:center; gap:6px; margin-bottom:10px; font-size:14px; cursor:pointer;">
       <input type="checkbox" role="switch" id="costco-toggle" checked>
       Costco
