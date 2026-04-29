@@ -4,15 +4,48 @@
 (function () {
   'use strict';
 
-  let currentFuel   = 'regular';
-  let currentRegion = '';
-  let clusterMode   = 'avg'; // 'min' | 'avg' | 'max'
-  let showCostco    = true;
+  // ── URL param helpers ──────────────────────────────────────
+  function getParams() {
+    return new URLSearchParams(window.location.search);
+  }
+
+  function updateURL() {
+    const p = new URLSearchParams();
+    if (currentFuel   !== 'regular') p.set('fuel', currentFuel);
+    if (currentRegion !== '')        p.set('region', currentRegion);
+    if (clusterMode   !== 'avg')     p.set('cluster', clusterMode);
+    if (!showCostco)                 p.set('costco', '0');
+    const slider = document.getElementById('price-slider');
+    if (slider && parseFloat(slider.value) < parseFloat(slider.max)) {
+      p.set('price', slider.value);
+    }
+    if (map) {
+      const c = map.getCenter();
+      p.set('lat',  c.lat.toFixed(5));
+      p.set('lng',  c.lng.toFixed(5));
+      p.set('zoom', map.getZoom());
+    }
+    const qs = p.toString();
+    history.replaceState(null, '', qs ? '?' + qs : window.location.pathname);
+  }
+
+  // Read initial state from URL params (fall back to defaults).
+  const _p          = getParams();
+  let currentFuel   = ['regular','super','diesel'].includes(_p.get('fuel')) ? _p.get('fuel') : 'regular';
+  let currentRegion = _p.get('region') || '';
+  let clusterMode   = ['min','avg','max'].includes(_p.get('cluster')) ? _p.get('cluster') : 'avg';
+  let showCostco    = _p.get('costco') !== '0';
+  let _initPrice    = _p.has('price') ? parseFloat(_p.get('price')) : null;
+  let _initLat      = _p.has('lat')   ? parseFloat(_p.get('lat'))   : null;
+  let _initLng      = _p.has('lng')   ? parseFloat(_p.get('lng'))   : null;
+  let _initZoom     = _p.has('zoom')  ? parseInt(_p.get('zoom'), 10) : null;
+
   let allStations   = window.__stations || [];
   let allMarkers    = [];
   let visibleSet    = new Set();
   let minPrice = 0, maxPrice = 300;
   let sliderTimer   = null;
+  let mapMoveTimer  = null;
   const stationDeltas = window.__deltas || {};
 
   // ── Map setup (deferred to init section below) ─────────────
@@ -221,13 +254,14 @@
     document.getElementById('region-select').addEventListener('change', function () {
       currentRegion = this.value;
       rebuildMarkers(true);
+      updateURL();
     });
 
     document.getElementById('price-slider').addEventListener('input', function () {
       const val = parseFloat(this.value);
       document.getElementById('slider-label').textContent = val.toFixed(1) + '¢/L';
       clearTimeout(sliderTimer);
-      sliderTimer = setTimeout(() => applyPriceFilter(val), 80);
+      sliderTimer = setTimeout(() => { applyPriceFilter(val); updateURL(); }, 80);
     });
 
     document.querySelectorAll('.cluster-btn').forEach(btn => {
@@ -237,6 +271,7 @@
         document.querySelectorAll('.cluster-btn').forEach(b =>
           b.classList.toggle('active', b.dataset.mode === clusterMode));
         if (allStations.length) clusterGroup.refreshClusters();
+        updateURL();
       });
     });
 
@@ -247,12 +282,14 @@
         document.querySelectorAll('.fuel-btn[data-fuel]').forEach(b =>
           b.classList.toggle('active', b.dataset.fuel === currentFuel));
         rebuildMarkers();
+        updateURL();
       });
     });
 
     document.getElementById('costco-toggle').addEventListener('change', function () {
       showCostco = this.checked;
       rebuildMarkers();
+      updateURL();
     });
 
     // ── Locate-me button ───────────────────────────────────
@@ -306,7 +343,9 @@
   const loadingEl = document.getElementById('loading');
   try {
     // Create map and cluster group now that the DOM is ready.
-    map = L.map('map', { zoomControl: false }).setView([46.8, -71.2], 7);
+    const initCenter = (_initLat !== null && _initLng !== null) ? [_initLat, _initLng] : [46.8, -71.2];
+    const initZoom   = _initZoom !== null ? _initZoom : 7;
+    map = L.map('map', { zoomControl: false }).setView(initCenter, initZoom);
     map.createPane('locatePane').style.zIndex = 650;
     L.control.zoom({ position: 'topright' }).addTo(map);
     var lastUpdatedText = (document.getElementById('last-updated') || {}).textContent || '';
@@ -354,10 +393,45 @@
 
     loadingEl.style.display = 'none';
 
+    // Apply initial state from URL params to UI controls.
+    if (currentFuel !== 'regular') {
+      document.querySelectorAll('.fuel-btn[data-fuel]').forEach(b =>
+        b.classList.toggle('active', b.dataset.fuel === currentFuel));
+    }
+    if (clusterMode !== 'avg') {
+      document.querySelectorAll('.cluster-btn').forEach(b =>
+        b.classList.toggle('active', b.dataset.mode === clusterMode));
+    }
+    if (!showCostco) {
+      const ct = document.getElementById('costco-toggle');
+      if (ct) ct.checked = false;
+    }
+    if (currentRegion) {
+      const rs = document.getElementById('region-select');
+      if (rs) rs.value = currentRegion;
+    }
+
     rebuildMarkers();
+
+    // Override slider value from URL after rebuildMarkers set it.
+    if (_initPrice !== null) {
+      const slider = document.getElementById('price-slider');
+      if (slider && _initPrice < parseFloat(slider.max)) {
+        slider.value = _initPrice;
+        document.getElementById('slider-label').textContent = _initPrice.toFixed(1) + '¢/L';
+        applyPriceFilter(_initPrice, false);
+      }
+    }
+
     map.addLayer(clusterGroup);
 
     bindControls();
+
+    // Update URL on map move/zoom.
+    map.on('moveend zoomend', function () {
+      clearTimeout(mapMoveTimer);
+      mapMoveTimer = setTimeout(updateURL, 200);
+    });
 
     // Expose for use after htmx page-swap back to the map page.
     window.__mapInvalidate = function () {
